@@ -234,6 +234,7 @@ function resetToPMDS() {
   stopWorker(true)
   graph.posX.set(graph.initX)
   graph.posY.set(graph.initY)
+  graphState.value = { ...graph }
   requestRender(graph.edgeCount < EDGE_RENDER_LIMIT, 'reset')
   layoutPhase.value = 'idle'
   statusText.value = 'Reset'
@@ -261,14 +262,15 @@ function handleWorkerMessage(event) {
   if (!supportsSharedArrayBuffer && payload?.posX && payload?.posY) {
     graph.posX.set(payload.posX)
     graph.posY.set(payload.posY)
+    graphState.value = { ...graph }
   }
 
   if (supportsSharedArrayBuffer) {
     if (Atomics.load(controlState, 0) !== SLOT_FULL) return
     Atomics.store(controlState, 0, SLOT_EMPTY)
     Atomics.notify(controlState, 0)
-  } else {
-    if (type === 'progress' && lastWorkerCommand !== CMD_RUN) return
+  } else if (type === 'progress' && lastWorkerCommand !== CMD_RUN) {
+    return
   }
 
   statusText.value = `${type === 'done' ? 'Finished' : 'Running:'} ${payload.epoch} / ${payload.nEpoch}`
