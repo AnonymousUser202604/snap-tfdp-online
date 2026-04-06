@@ -258,6 +258,11 @@ function handleWorkerMessage(event) {
   const { type, payload } = event.data
   if (type !== 'progress' && type !== 'done') return
 
+  if (!supportsSharedArrayBuffer && payload?.posX && payload?.posY) {
+    graph.posX.set(payload.posX)
+    graph.posY.set(payload.posY)
+  }
+
   if (supportsSharedArrayBuffer) {
     if (Atomics.load(controlState, 0) !== SLOT_FULL) return
     Atomics.store(controlState, 0, SLOT_EMPTY)

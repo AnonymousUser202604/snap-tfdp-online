@@ -116,8 +116,8 @@ function loop() {
         }
 
         Atomics.store(shared, 0, SLOT_FULL)
-      } else {
-        if (messageCommand === CMD_STOP) return
+      } else if (messageCommand === CMD_STOP) {
+        return
       }
 
       self.postMessage({
@@ -125,6 +125,8 @@ function loop() {
         payload: {
           epoch: layout.epoch,
           nEpoch: layout.nEpoch,
+          posX: useSharedControl ? undefined : layout.posX,
+          posY: useSharedControl ? undefined : layout.posY,
         },
       })
 
