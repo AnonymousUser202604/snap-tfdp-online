@@ -68,16 +68,15 @@ textarea {
 
 .hero-bar h1 {
   margin: 0;
-  font-size: clamp(28px, 1.8vw, 40px);
+  font-size: clamp(20px, 1.7vw, 40px);
   line-height: 1.12;
   color: #111827;
 }
 
 .hero-note {
-  max-width: 1200px;
   margin: 10px 0 0;
   padding: 0;
-  font-size: 13px;
+  font-size: 16px;
   line-height: 1.55;
   color: #64748b;
 }
@@ -170,7 +169,7 @@ textarea {
 }
 
 .dataset-format-help {
-  font-size: 13px;
+  font-size: 16px;
   line-height: 1.55;
   color: #475569;
 }
@@ -183,7 +182,7 @@ textarea {
 
 .dataset-format-section h4 {
   margin: 0 0 8px;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 700;
   color: #111827;
 }
@@ -193,7 +192,7 @@ textarea {
 }
 
 .dataset-format-section code {
-  font-size: 11px;
+  font-size: 16px;
   padding: 1px 5px;
   border-radius: 4px;
   background: #f1f5f9;
@@ -253,7 +252,7 @@ textarea {
   border-radius: 12px;
   background: #f8fafc;
   color: #374151;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
   letter-spacing: 0.01em;
   cursor: pointer;
@@ -331,7 +330,7 @@ textarea {
 .custom-file-key {
   justify-self: stretch;
   text-align: center;
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 600;
   color: #64748b;
 }
@@ -346,6 +345,7 @@ textarea {
   font-weight: 500;
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease;
+  width: 60px;
 }
 
 .custom-file-pick:hover:not(:disabled) {
@@ -544,10 +544,12 @@ textarea {
 
 .el-card__header {
   border-bottom: 1px solid #eef2f7 !important;
+  padding: 10px 16px !important;
 }
 
 .el-card__body {
   color: #1f2937;
+  padding: 10px 16px !important;
 }
 
 .el-button {
@@ -625,14 +627,9 @@ textarea {
   }
 }
 
-@media (max-width: 1200px) {
-  .app-shell {
-    padding-inline: 6vw;
-  }
-}
 
-@media (max-width: 980px),
-(orientation: portrait) {
+
+@media(orientation: portrait) {
 
   html,
   body,
@@ -658,58 +655,5 @@ textarea {
   .chart-surface {
     min-height: 62vh;
     flex: none;
-  }
-}
-
-@media (max-width: 720px) {
-
-  .action-stack {
-    grid-template-columns: 1fr;
-  }
-
-  .meta-row,
-  .field-row,
-  .dataset-select-row {
-    grid-template-columns: 1fr;
-  }
-
-  .custom-file-line {
-    grid-template-columns: 1fr;
-    gap: 6px;
-  }
-
-  .custom-file-key {
-    text-align: left;
-    justify-self: start;
-  }
-
-  .custom-file-pick {
-    justify-self: start;
-  }
-
-  .custom-panel-actions {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .custom-text-btn {
-    margin-right: 0;
-    text-align: left;
-  }
-
-  .custom-apply-btn {
-    width: 100%;
-  }
-
-  .meta-row strong,
-  .meta-status :deep(.el-tag) {
-    justify-self: start;
-    text-align: left;
-  }
-
-  .field-row span,
-  .dataset-select-label {
-    text-align: left;
-    justify-self: start;
   }
 }

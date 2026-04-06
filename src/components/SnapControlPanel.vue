@@ -194,7 +194,7 @@ function applyCustom() {
               <button type="button" class="custom-file-pick" :disabled="datasetDisabled" @click="pmdsInputRef?.click()">
                 Browse
               </button>
-              <span class="custom-file-name" :title="pmdsFileLabel">{{ pmdsFileLabel || 'Optional .PMDS' }}</span>
+              <span class="custom-file-name" :title="pmdsFileLabel">{{ pmdsFileLabel || 'Optional .txt' }}</span>
             </div>
           </div>
           <div class="custom-panel-actions">

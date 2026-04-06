@@ -264,7 +264,7 @@ function handleRenderState(payload) {
     <header class="hero-bar">
       <h1>SNAP-tFDP: Massively Scalable Graph Layouts via Sparse Negative Sampling</h1>
       <p class="hero-note">
-        This online demo is implemented using JavaScript; its performance is limited compared to the native C++ implementation. The <strong>native implementation</strong> from the paper can be found in the <a :href="fullImplementationGithubUrl" target="_blank" rel="noopener noreferrer">GitHub</a> repository.
+        This online demo is implemented in <strong>single-threaded</strong> JavaScript, so its performance is limited compared to the native C++ implementation. The <strong>native implementation</strong> from the paper can be found in the <a :href="fullImplementationGithubUrl" target="_blank" rel="noopener noreferrer">GitHub</a> repository.
       </p>
     </header>
 
