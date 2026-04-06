@@ -5,6 +5,12 @@ export const DATASETS = ['aircraft', 'APH', 'ACO', 'co_author_8391', 'socfb-UF21
   label: name,
 }))
 
+const supportsSharedArrayBuffer = typeof SharedArrayBuffer !== 'undefined'
+
+function createBuffer(byteLength) {
+  return supportsSharedArrayBuffer ? new SharedArrayBuffer(byteLength) : new ArrayBuffer(byteLength)
+}
+
 /**
  * Build URL for files under `public/` (respects Vite `base`, e.g. GitHub Pages subpath).
  * @param {string} path - e.g. `data/aircraft.txt.gz` (no leading slash)
@@ -228,11 +234,11 @@ export function buildGraph(edgeText, attrText, pmdsText, name, options = {}) {
   const labels = parseAttr(attrText ?? '', nodeCount)
   const pmdsSource = pmdsText && String(pmdsText).trim() ? pmdsText : spiralInitPmdsText(nodeCount)
   const points = parsePositions(pmdsSource, nodeCount)
-  const posX = new Float32Array(new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * nodeCount))
-  const posY = new Float32Array(new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * nodeCount))
+  const posX = new Float32Array(createBuffer(Float32Array.BYTES_PER_ELEMENT * nodeCount))
+  const posY = new Float32Array(createBuffer(Float32Array.BYTES_PER_ELEMENT * nodeCount))
   const initX = new Float32Array(nodeCount)
   const initY = new Float32Array(nodeCount)
-  const renderColors = new Uint32Array(new SharedArrayBuffer(Uint32Array.BYTES_PER_ELEMENT * nodeCount))
+  const renderColors = new Uint32Array(createBuffer(Uint32Array.BYTES_PER_ELEMENT * nodeCount))
   let labeledCount = 0
 
   for (let i = 0; i < nodeCount; i += 1) {
@@ -245,8 +251,8 @@ export function buildGraph(edgeText, attrText, pmdsText, name, options = {}) {
     if (labels[i] !== -1) labeledCount += 1
   }
 
-  const sources = new Uint32Array(new SharedArrayBuffer(Uint32Array.BYTES_PER_ELEMENT * edges.length * 2))
-  const targets = new Uint32Array(new SharedArrayBuffer(Uint32Array.BYTES_PER_ELEMENT * edges.length * 2))
+  const sources = new Uint32Array(createBuffer(Uint32Array.BYTES_PER_ELEMENT * edges.length * 2))
+  const targets = new Uint32Array(createBuffer(Uint32Array.BYTES_PER_ELEMENT * edges.length * 2))
   let ptr = 0
   for (let i = 0; i < edges.length; i += 1) {
     const [u, v] = edges[i]
