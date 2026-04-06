@@ -10,14 +10,6 @@ const CUSTOM_DATASET_KEY = '__custom__'
 const fullImplementationGithubUrl =
   import.meta.env.VITE_FULL_IMPLEMENTATION_GITHUB || 'https://github.com/AnonymousUser202604/SNAP-tFDP'
 
-const SLOT_EMPTY = 0
-const SLOT_FULL = 1
-const SLOT_STOP = 2
-const CMD_RUN = 0
-const CMD_PAUSE = 1
-const CMD_STOP = 2
-const supportsSharedArrayBuffer = typeof SharedArrayBuffer !== 'undefined'
-
 const selectedName = ref('aircraft')
 /** When using uploads: { label, edgeText, attrText, pmdsText } */
 const customBundle = ref(null)
@@ -69,7 +61,7 @@ const datasetDisplayName = computed(() => {
 
 let worker = null
 let controlState = null
-let lastWorkerCommand = CMD_RUN
+let waitingForRenderCommit = false
 
 onMounted(async () => {
   worker = new Worker(new URL('./workers/snapLayout.worker.js', import.meta.url), { type: 'module' })
@@ -169,15 +161,8 @@ function startLayout() {
   const graph = graphState.value
   if (!graph || !worker || !isLoaded.value || layoutPhase.value !== 'idle' || renderBusy.value) return
 
-  if (supportsSharedArrayBuffer) {
-    controlState = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 2))
-    controlState[0] = SLOT_EMPTY
-    controlState[1] = CMD_RUN
-  } else {
-    controlState = { fallback: true }
-  }
-
-  lastWorkerCommand = CMD_RUN
+  controlState = { active: true }
+  waitingForRenderCommit = false
   layoutPhase.value = 'running'
   statusText.value = `Running: 0 / ${paramEpoch.value}`
   requestRender(false, 'running')
@@ -193,21 +178,14 @@ function startLayout() {
       nEpoch: Math.max(1, Number(paramEpoch.value) || 1),
       nodeCount: graph.nodeCount,
       seed: 42,
-      controlBuffer: supportsSharedArrayBuffer ? controlState.buffer : null,
-      useSharedControl: supportsSharedArrayBuffer,
     },
   })
 }
 
 function pauseLayout() {
   if (!controlState || layoutPhase.value !== 'running' || renderBusy.value) return
-  lastWorkerCommand = CMD_PAUSE
-  if (supportsSharedArrayBuffer) {
-    Atomics.store(controlState, 1, CMD_PAUSE)
-    Atomics.notify(controlState, 1)
-  } else {
-    worker?.postMessage({ type: 'command', payload: { command: 'pause' } })
-  }
+  worker?.postMessage({ type: 'command', payload: { command: 'pause' } })
+  waitingForRenderCommit = false
   layoutPhase.value = 'paused'
   statusText.value = 'Paused'
   const graph = graphState.value
@@ -216,16 +194,10 @@ function pauseLayout() {
 
 function resumeLayout() {
   if (!controlState || layoutPhase.value !== 'paused' || renderBusy.value) return
-  lastWorkerCommand = CMD_RUN
-  if (supportsSharedArrayBuffer) {
-    Atomics.store(controlState, 1, CMD_RUN)
-    Atomics.notify(controlState, 1)
-  } else {
-    worker?.postMessage({ type: 'command', payload: { command: 'resume' } })
-  }
+  waitingForRenderCommit = false
   layoutPhase.value = 'running'
   statusText.value = 'Running layout...'
-  requestRender(false, 'running')
+  worker?.postMessage({ type: 'command', payload: { command: 'step' } })
 }
 
 function resetToPMDS() {
@@ -241,14 +213,8 @@ function resetToPMDS() {
 }
 
 function stopWorker(resetPhase = false) {
-  if (controlState && supportsSharedArrayBuffer) {
-    Atomics.store(controlState, 0, SLOT_STOP)
-    Atomics.store(controlState, 1, CMD_STOP)
-    Atomics.notify(controlState, 0)
-    Atomics.notify(controlState, 1)
-  }
+  waitingForRenderCommit = false
   controlState = null
-  lastWorkerCommand = CMD_STOP
   if (worker) worker.postMessage({ type: 'stop' })
   if (resetPhase) layoutPhase.value = 'idle'
 }
@@ -259,21 +225,14 @@ function handleWorkerMessage(event) {
   const { type, payload } = event.data
   if (type !== 'progress' && type !== 'done') return
 
-  if (!supportsSharedArrayBuffer && payload?.posX && payload?.posY) {
+  if (payload?.posX && payload?.posY) {
     graph.posX.set(payload.posX)
     graph.posY.set(payload.posY)
     graphState.value = { ...graph }
   }
 
-  if (supportsSharedArrayBuffer) {
-    if (Atomics.load(controlState, 0) !== SLOT_FULL) return
-    Atomics.store(controlState, 0, SLOT_EMPTY)
-    Atomics.notify(controlState, 0)
-  } else if (type === 'progress' && lastWorkerCommand !== CMD_RUN) {
-    return
-  }
-
   statusText.value = `${type === 'done' ? 'Finished' : 'Running:'} ${payload.epoch} / ${payload.nEpoch}`
+  waitingForRenderCommit = type !== 'done'
   requestRender(type === 'done' || layoutPhase.value === 'paused' ? graph.edgeCount < EDGE_RENDER_LIMIT : false, type === 'done' ? 'finished' : layoutPhase.value)
 
   if (type === 'done') {
@@ -292,6 +251,11 @@ function requestRender(includeEdges, reason) {
 function handleRenderState(payload) {
   renderBusy.value = payload.busy
   renderProgress.value = payload
+
+  if (!payload.busy && waitingForRenderCommit && layoutPhase.value === 'running') {
+    waitingForRenderCommit = false
+    worker?.postMessage({ type: 'command', payload: { command: 'step' } })
+  }
 }
 </script>
 

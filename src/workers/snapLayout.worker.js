@@ -1,11 +1,3 @@
-const SLOT_EMPTY = 0
-const SLOT_FULL = 1
-const SLOT_STOP = 2
-const CMD_RUN = 0
-const CMD_PAUSE = 1
-const CMD_STOP = 2
-const SAMPLE_UPDATE_STRIDE = 1
-
 function createRng(seed) {
   let t = seed >>> 0
   return () => {
@@ -17,15 +9,13 @@ function createRng(seed) {
 }
 
 let layout = null
-let shared = null
-let useSharedControl = false
-let messageCommand = CMD_RUN
+let messageCommand = 'idle'
 
 self.onmessage = (event) => {
   const { type, payload } = event.data
 
   if (type === 'start') {
-    const { posXBuffer, posYBuffer, sources, targets, k, nEpoch, seed, nodeCount, controlBuffer, useSharedControl: useShared } = payload
+    const { posXBuffer, posYBuffer, sources, targets, k, nEpoch, seed, nodeCount } = payload
     const rng = createRng(seed ?? 42)
     const edgeOrder = new Uint32Array(sources.length)
     for (let i = 0; i < edgeOrder.length; i += 1) edgeOrder[i] = i
@@ -36,9 +26,6 @@ self.onmessage = (event) => {
       edgeOrder[j] = tmp
     }
 
-    useSharedControl = Boolean(useShared && controlBuffer)
-    shared = useSharedControl ? new Int32Array(controlBuffer) : null
-    messageCommand = CMD_RUN
     layout = {
       posX: new Float32Array(posXBuffer),
       posY: new Float32Array(posYBuffer),
@@ -56,86 +43,54 @@ self.onmessage = (event) => {
       beta: 8,
       rng,
     }
-    if (shared) {
-      Atomics.store(shared, 0, SLOT_EMPTY)
-      Atomics.store(shared, 1, CMD_RUN)
-    }
-    loop()
+    messageCommand = 'step'
+    runSingleEpoch()
     return
   }
 
   if (type === 'command') {
     const command = payload?.command
-    if (command === 'pause') messageCommand = CMD_PAUSE
-    if (command === 'resume') messageCommand = CMD_RUN
-    if (command === 'stop') messageCommand = CMD_STOP
-    if (messageCommand === CMD_RUN && layout) setTimeout(loop, 0)
+    if (command === 'pause') {
+      messageCommand = 'pause'
+      return
+    }
+    if (command === 'stop') {
+      messageCommand = 'stop'
+      layout = null
+      return
+    }
+    if (command === 'resume' || command === 'step') {
+      messageCommand = 'step'
+      runSingleEpoch()
+    }
     return
   }
 
   if (type === 'stop') {
-    messageCommand = CMD_STOP
+    messageCommand = 'stop'
     layout = null
-    shared = null
-    useSharedControl = false
   }
 }
 
-function waitWhilePausedOrStopped() {
-  while (true) {
-    const command = Atomics.load(shared, 1)
-    if (command === CMD_RUN) return true
-    if (command === CMD_STOP) return false
-    Atomics.wait(shared, 1, CMD_PAUSE)
-  }
-}
+function runSingleEpoch() {
+  if (!layout || messageCommand === 'stop' || messageCommand === 'pause') return
+  if (layout.epoch >= layout.nEpoch) return
 
-function loop() {
-  if (!layout) return
+  runEpoch(layout)
+  layout.epoch += 1
+  layout.step += (layout.stepMin - layout.step) * layout.stepSize
+  messageCommand = 'idle'
 
-  while (layout.epoch < layout.nEpoch) {
-    if (useSharedControl) {
-      if (!shared || !waitWhilePausedOrStopped()) return
-    } else {
-      if (messageCommand === CMD_STOP) return
-      if (messageCommand === CMD_PAUSE) return
-    }
-
-    runEpoch(layout)
-    layout.epoch += 1
-    layout.step += (layout.stepMin - layout.step) * layout.stepSize
-
-    if (layout.epoch % SAMPLE_UPDATE_STRIDE === 0 || layout.epoch >= layout.nEpoch) {
-      if (useSharedControl) {
-        while (true) {
-          const slot = Atomics.load(shared, 0)
-          const command = Atomics.load(shared, 1)
-          if (command === CMD_STOP) return
-          if (slot === SLOT_EMPTY) break
-          Atomics.wait(shared, 0, SLOT_FULL)
-        }
-
-        Atomics.store(shared, 0, SLOT_FULL)
-      } else if (messageCommand === CMD_STOP) {
-        return
-      }
-
-      self.postMessage({
-        type: layout.epoch >= layout.nEpoch ? 'done' : 'progress',
-        payload: {
-          epoch: layout.epoch,
-          nEpoch: layout.nEpoch,
-          posX: useSharedControl ? undefined : layout.posX,
-          posY: useSharedControl ? undefined : layout.posY,
-        },
-      })
-
-      if (!useSharedControl) {
-        setTimeout(loop, 0)
-        return
-      }
-    }
-  }
+  const isDone = layout.epoch >= layout.nEpoch
+  self.postMessage({
+    type: isDone ? 'done' : 'progress',
+    payload: {
+      epoch: layout.epoch,
+      nEpoch: layout.nEpoch,
+      posX: layout.posX,
+      posY: layout.posY,
+    },
+  })
 }
 
 function runEpoch(state) {
