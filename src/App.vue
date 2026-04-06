@@ -16,6 +16,7 @@ const SLOT_STOP = 2
 const CMD_RUN = 0
 const CMD_PAUSE = 1
 const CMD_STOP = 2
+const supportsSharedArrayBuffer = typeof SharedArrayBuffer !== 'undefined'
 
 const selectedName = ref('aircraft')
 /** When using uploads: { label, edgeText, attrText, pmdsText } */
@@ -68,6 +69,7 @@ const datasetDisplayName = computed(() => {
 
 let worker = null
 let controlState = null
+let lastWorkerCommand = CMD_RUN
 
 onMounted(async () => {
   worker = new Worker(new URL('./workers/snapLayout.worker.js', import.meta.url), { type: 'module' })
@@ -91,7 +93,7 @@ async function loadDataset(name) {
   requestRender(false, 'clear')
   isLoaded.value = false
   layoutPhase.value = 'idle'
-  statusText.value = `Loading`
+  statusText.value = 'Loading'
   renderBusy.value = false
   renderProgress.value = { phase: 'idle', completed: 0, total: 0, reason: 'dataset' }
   stats.value = { nodes: 0, edges: 0 }
@@ -124,7 +126,7 @@ async function loadDataset(name) {
     requestRender(graph.edgeCount < EDGE_RENDER_LIMIT, 'dataset')
     stats.value = { nodes: graph.nodeCount, edges: graph.edgeCount }
     isLoaded.value = true
-    statusText.value = `Ready`
+    statusText.value = 'Ready'
   } catch (error) {
     console.error(error)
     graphState.value = null
@@ -167,9 +169,15 @@ function startLayout() {
   const graph = graphState.value
   if (!graph || !worker || !isLoaded.value || layoutPhase.value !== 'idle' || renderBusy.value) return
 
-  controlState = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 2))
-  controlState[0] = SLOT_EMPTY
-  controlState[1] = CMD_RUN
+  if (supportsSharedArrayBuffer) {
+    controlState = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 2))
+    controlState[0] = SLOT_EMPTY
+    controlState[1] = CMD_RUN
+  } else {
+    controlState = { fallback: true }
+  }
+
+  lastWorkerCommand = CMD_RUN
   layoutPhase.value = 'running'
   statusText.value = `Running: 0 / ${paramEpoch.value}`
   requestRender(false, 'running')
@@ -185,15 +193,21 @@ function startLayout() {
       nEpoch: Math.max(1, Number(paramEpoch.value) || 1),
       nodeCount: graph.nodeCount,
       seed: 42,
-      controlBuffer: controlState.buffer,
+      controlBuffer: supportsSharedArrayBuffer ? controlState.buffer : null,
+      useSharedControl: supportsSharedArrayBuffer,
     },
   })
 }
 
 function pauseLayout() {
   if (!controlState || layoutPhase.value !== 'running' || renderBusy.value) return
-  Atomics.store(controlState, 1, CMD_PAUSE)
-  Atomics.notify(controlState, 1)
+  lastWorkerCommand = CMD_PAUSE
+  if (supportsSharedArrayBuffer) {
+    Atomics.store(controlState, 1, CMD_PAUSE)
+    Atomics.notify(controlState, 1)
+  } else {
+    worker?.postMessage({ type: 'command', payload: { command: 'pause' } })
+  }
   layoutPhase.value = 'paused'
   statusText.value = 'Paused'
   const graph = graphState.value
@@ -202,8 +216,13 @@ function pauseLayout() {
 
 function resumeLayout() {
   if (!controlState || layoutPhase.value !== 'paused' || renderBusy.value) return
-  Atomics.store(controlState, 1, CMD_RUN)
-  Atomics.notify(controlState, 1)
+  lastWorkerCommand = CMD_RUN
+  if (supportsSharedArrayBuffer) {
+    Atomics.store(controlState, 1, CMD_RUN)
+    Atomics.notify(controlState, 1)
+  } else {
+    worker?.postMessage({ type: 'command', payload: { command: 'resume' } })
+  }
   layoutPhase.value = 'running'
   statusText.value = 'Running layout...'
   requestRender(false, 'running')
@@ -217,17 +236,18 @@ function resetToPMDS() {
   graph.posY.set(graph.initY)
   requestRender(graph.edgeCount < EDGE_RENDER_LIMIT, 'reset')
   layoutPhase.value = 'idle'
-  statusText.value = `Reset`
+  statusText.value = 'Reset'
 }
 
 function stopWorker(resetPhase = false) {
-  if (controlState) {
+  if (controlState && supportsSharedArrayBuffer) {
     Atomics.store(controlState, 0, SLOT_STOP)
     Atomics.store(controlState, 1, CMD_STOP)
     Atomics.notify(controlState, 0)
     Atomics.notify(controlState, 1)
-    controlState = null
   }
+  controlState = null
+  lastWorkerCommand = CMD_STOP
   if (worker) worker.postMessage({ type: 'stop' })
   if (resetPhase) layoutPhase.value = 'idle'
 }
@@ -238,13 +258,16 @@ function handleWorkerMessage(event) {
   const { type, payload } = event.data
   if (type !== 'progress' && type !== 'done') return
 
-  if (Atomics.load(controlState, 0) !== SLOT_FULL) return
+  if (supportsSharedArrayBuffer) {
+    if (Atomics.load(controlState, 0) !== SLOT_FULL) return
+    Atomics.store(controlState, 0, SLOT_EMPTY)
+    Atomics.notify(controlState, 0)
+  } else {
+    if (type === 'progress' && lastWorkerCommand !== CMD_RUN) return
+  }
 
   statusText.value = `${type === 'done' ? 'Finished' : 'Running:'} ${payload.epoch} / ${payload.nEpoch}`
   requestRender(type === 'done' || layoutPhase.value === 'paused' ? graph.edgeCount < EDGE_RENDER_LIMIT : false, type === 'done' ? 'finished' : layoutPhase.value)
-
-  Atomics.store(controlState, 0, SLOT_EMPTY)
-  Atomics.notify(controlState, 0)
 
   if (type === 'done') {
     layoutPhase.value = 'finished'
