@@ -1,2 +1,2 @@
 # SNAP-tFDP online
-core code: [src\workers\snapLayout.worker.js](src\workers\snapLayout.worker.js)
+core code: [src/workers/snapLayout.worker.js](src/workers/snapLayout.worker.js)
